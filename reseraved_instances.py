@@ -1,5 +1,8 @@
 import boto3
 from datetime import datetime, timezone, timedelta
+from botocore.exceptions import ClientError
+import os
+import json
 ec2_client = boto3.client("ec2", region_name="us-west-2")
 
 def get_reserved_instances():
@@ -21,15 +24,25 @@ def determine_expirery(expirery_date):
         return True
     else:
         return False
-
+#Send Result to SNS
+def sendToSNS(messages):
+    sns = boto3.client('sns')
+    try:
+        send_message = sns.publish(
+            TargetArn=os.environ['SNS_TOPIC'],
+            Subject='EC2-Reservation',
+            Message=messages,
+            )
+        return send_message
+    except ClientError as e:
+        print("Failed to send message to SNS")
+        print(e)
 
 
 if __name__ == "__main__":
 
     for reservation, res_details in get_reserved_instances().items():
         if determine_expirery(res_details['ExpireDate']) == True:
-            print(reservation)
-            print("I'm going to expire soon")
-        else:
-            print(reservation)
-            print(res_details['ExpireDate'])
+            sns_message = {"reservation": reservation, "expires": res_details['ExpireDate'].strftime("%m/%d/%Y, %H:%M:%S")}
+            sendToSNS(json.dumps(sns_message))
+#  
